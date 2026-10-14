@@ -1,0 +1,12 @@
+{
+  "name": "REA original - web analysis",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:24",
+  "postCreateCommand": "npm install -g rea-agents@latest && npx -y playwright@latest install --with-deps chromium && rea --help",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.vscode-typescript-next"
+      ]
+    }
+  }
+}
