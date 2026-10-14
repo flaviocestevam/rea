@@ -1,32 +1,58 @@
-name: REA website analysis - Kalodata
+name: REA website analysis
 on:
   workflow_dispatch:
+    inputs:
+      url:
+        description: Website URL
+        required: false
+        default: https://kalodata.com
   push:
     paths:
       - '.github/workflows/rea-kalodata-analysis.yml'
+      - '.rea-requests/current-url.txt'
 permissions:
-  contents: read
+  contents: write
 jobs:
   investigate:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Node 24
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '24'
       - name: Install original REA and Chromium
         run: |
           npm install -g rea-agents@latest
           npx -y playwright@latest install --with-deps chromium
-          rea --version
-      - name: Analyze Kalodata via original REA CLI
-        run: node .devcontainer/analyze-url.mjs https://kalodata.com
-      - name: Save original REA findings
+          rea --help > /dev/null
+      - name: Analyze with original REA
+        id: scan
+        continue-on-error: true
+        env:
+          TARGET_URL: ${{ inputs.url }}
+        run: |
+          if [ -z "$TARGET_URL" ]; then TARGET_URL="$(cat .rea-requests/current-url.txt)"; fi
+          echo "$TARGET_URL" > /tmp/rea-target-url
+          node .devcontainer/analyze-url.mjs "$TARGET_URL"
+      - name: Produce public machine-readable run record
+        if: always()
+        run: |
+          mkdir -p docs/rea-results
+          node -e 'const fs=require("fs");const dir="rea-reports";const names=fs.existsSync(dir)?fs.readdirSync(dir):[];const parts={};for(const f of names){if(!f.endsWith(".json"))continue;const key=f.includes("inspect-web-page")?"inspection":f.includes("analyze-web-bundle")?"bundles":f;try{parts[key]=JSON.parse(fs.readFileSync(dir+"/"+f,"utf8"));}catch{parts[key]={error:"Invalid REA JSON response",source_file:f};}}const target=fs.existsSync("/tmp/rea-target-url")?fs.readFileSync("/tmp/rea-target-url","utf8").trim():"unknown";fs.writeFileSync("docs/rea-results/latest.json",JSON.stringify({url:target,run_id:process.env.GITHUB_RUN_ID,created_at:new Date().toISOString(),status:process.env.SCAN_STATUS,results:parts},null,2));'
+        env:
+          SCAN_STATUS: ${{ steps.scan.outcome }}
+      - name: Publish REA result back to repository
+        if: always()
+        run: |
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add docs/rea-results/latest.json
+          git diff --cached --quiet || (git commit -m "REA results for website [skip ci]" && git push)
+      - name: Preserve full REA evidence files
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: kalodata-rea-evidence
+          name: rea-evidence
           path: rea-reports/
           if-no-files-found: warn
