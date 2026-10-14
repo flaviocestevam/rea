@@ -1,0 +1,32 @@
+name: REA website analysis - Kalodata
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/rea-kalodata-analysis.yml'
+permissions:
+  contents: read
+jobs:
+  investigate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install original REA and Chromium
+        run: |
+          npm install -g rea-agents@latest
+          npx -y playwright@latest install --with-deps chromium
+          rea --version
+      - name: Analyze Kalodata via original REA CLI
+        run: node .devcontainer/analyze-url.mjs https://kalodata.com
+      - name: Save original REA findings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kalodata-rea-evidence
+          path: rea-reports/
+          if-no-files-found: warn
